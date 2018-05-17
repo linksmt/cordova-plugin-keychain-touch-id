@@ -5,6 +5,7 @@ package com.cordova.plugin.android.fingerprintauth;
  */
 
 import android.Manifest;
+import android.annotation.TargetApi;
 import android.app.KeyguardManager;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -14,6 +15,7 @@ import android.content.res.Resources;
 import android.hardware.fingerprint.FingerprintManager;
 import android.os.Bundle;
 import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyInfo;
 import android.security.keystore.KeyPermanentlyInvalidatedException;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
@@ -39,6 +41,7 @@ import java.security.SecureRandom;
 import java.security.UnrecoverableEntryException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
+import java.security.spec.InvalidKeySpecException;
 import java.util.Locale;
 
 import javax.crypto.BadPaddingException;
@@ -47,8 +50,8 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.KeyGenerator;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.IvParameterSpec;
-
 
 public class FingerprintAuthAux {
 
@@ -69,6 +72,9 @@ public class FingerprintAuthAux {
     private static final String NO_FINGERPRINT_ENROLLED_CODE = "-7";
     private static final String NO_FINGERPRINT_ENROLLED_MESSAGE =
             "No fingers are enrolled with Touch ID.";
+    // HW Keystore Check
+    private static final String NO_KEYSTORE_SECURE_HARDWARE_CODE = "-8";
+    private static final String NO_KEYSTORE_SECURE_HARDWARE_MESSAGE = "Keystore is not hardware backed.";
 
     // Plugin Javascript actions
     private static final String SAVE = "save";
@@ -125,6 +131,7 @@ public class FingerprintAuthAux {
         String errorMessage = "";
         String createKeyExceptionErrorPrefix = "Failed to create key: ";
         boolean isKeyCreated = false;
+
         // The enrolling flow for fingerprint. This is where you ask the user to set up fingerprint
         // for your flow. Use of keys is necessary if you need to know if the set of
         // enrolled fingerprints has changed.
@@ -309,9 +316,19 @@ public class FingerprintAuthAux {
             }
             return true;
         } else if (action.equals(IS_AVAILABLE)) {
+            // HW Keystore Check - added hasSecureHardware check
+            // this is needed when I create a new Key because
+            // i need to create a new key to check the keyinfo.
+            setUserAuthenticationRequired = true;
             if (isHardwareDetected()) {
                 if (hasEnrolledFingerprints()) {
-                    mPluginResult = new PluginResult(PluginResult.Status.OK);
+                    if (hasSecureHardware(setUserAuthenticationRequired)) {
+                        mPluginResult = new PluginResult(PluginResult.Status.OK);
+                    }else{
+                        String errorMessage =
+                                createErrorMessage(NO_KEYSTORE_SECURE_HARDWARE_CODE, NO_KEYSTORE_SECURE_HARDWARE_MESSAGE);
+                        mPluginResult = new PluginResult(PluginResult.Status.ERROR, errorMessage);
+                    }
                 } else {
                     String errorMessage =
                             createErrorMessage(NO_FINGERPRINT_ENROLLED_CODE, NO_FINGERPRINT_ENROLLED_MESSAGE);
@@ -391,6 +408,33 @@ public class FingerprintAuthAux {
         return false;
     }
 
+    private boolean hasSecureHardware(final boolean setUserAuthenticationRequired){
+        // HW Keystore Check
+        String errorMessage = "";
+        String createKeyExceptionErrorPrefix = "Failed to create key: ";
+        createKey(setUserAuthenticationRequired);
+        SecretKey secretKey = getSecretKey();
+        try {
+            SecretKeyFactory factory = SecretKeyFactory.getInstance(secretKey.getAlgorithm(), "AndroidKeyStore");
+            KeyInfo keyInfo;
+            keyInfo = (KeyInfo) factory.getKeySpec(secretKey, KeyInfo.class);
+            Log.d(TAG,"Calling isInsideSecureHardwareMethod");
+            return keyInfo.isInsideSecureHardware();
+        }catch(NoSuchAlgorithmException e){
+            errorMessage = createKeyExceptionErrorPrefix + "NoSuchAlgorithmException";
+            Log.d(TAG,errorMessage);
+            return false;
+        }catch(InvalidKeySpecException e){
+            errorMessage = createKeyExceptionErrorPrefix + "InvalidKeySpecException";
+            Log.d(TAG,errorMessage);
+            return false;
+        }catch(NoSuchProviderException e){
+            errorMessage = createKeyExceptionErrorPrefix + "NoSuchProviderException";
+            Log.d(TAG,errorMessage);
+            return false;
+        }
+    }
+
     private boolean isFingerprintAuthAvailable() {
         return isHardwareDetected() && hasEnrolledFingerprints();
     }
@@ -462,6 +506,7 @@ public class FingerprintAuthAux {
         String errorMessage = "";
         String getSecretKeyExceptionErrorPrefix = "Failed to get SecretKey from KeyStore: ";
         SecretKey key = null;
+        KeyInfo keyInfo;
         try {
             mKeyStore.load(null);
             key = (SecretKey) mKeyStore.getKey(CLIENT_ID, null);
