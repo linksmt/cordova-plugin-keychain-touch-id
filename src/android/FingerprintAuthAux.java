@@ -33,10 +33,14 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
+import java.security.KeyFactory;
+import java.security.KeyPairGenerator;
+import java.security.KeyPair;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
+import java.security.PrivateKey;
 import java.security.SecureRandom;
 import java.security.UnrecoverableEntryException;
 import java.security.UnrecoverableKeyException;
@@ -146,6 +150,8 @@ public class FingerprintAuthAux {
                     .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_PKCS7)
                     .build());
             mKeyGenerator.generateKey();
+            //CODE CHECK ISHWSECURE
+
             isKeyCreated = true;
         } catch (NoSuchAlgorithmException e) {
             errorMessage = createKeyExceptionErrorPrefix + "NoSuchAlgorithmException";
@@ -319,10 +325,9 @@ public class FingerprintAuthAux {
             // HW Keystore Check - added hasSecureHardware check
             // this is needed when I create a new Key because
             // i need to create a new key to check the keyinfo.
-            setUserAuthenticationRequired = true;
             if (isHardwareDetected()) {
                 if (hasEnrolledFingerprints()) {
-                    if (hasSecureHardware(setUserAuthenticationRequired)) {
+                    if (hasSecureHardware()) {
                         mPluginResult = new PluginResult(PluginResult.Status.OK);
                     }else{
                         String errorMessage =
@@ -408,16 +413,24 @@ public class FingerprintAuthAux {
         return false;
     }
 
-    private boolean hasSecureHardware(final boolean setUserAuthenticationRequired){
+    private boolean hasSecureHardware(){
         // HW Keystore Check
         String errorMessage = "";
         String createKeyExceptionErrorPrefix = "Failed to create key: ";
-        createKey(setUserAuthenticationRequired);
-        SecretKey secretKey = getSecretKey();
+        String alias = "fingercheck";
         try {
-            SecretKeyFactory factory = SecretKeyFactory.getInstance(secretKey.getAlgorithm(), "AndroidKeyStore");
+            KeyPairGenerator kpg = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore");
+            kpg.initialize(new KeyGenParameterSpec.Builder(
+                    alias,
+                    KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY)
+                    .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512)
+                    .setUserAuthenticationRequired(true)
+                    .build());
+            KeyPair kp = kpg.generateKeyPair();
+            PrivateKey pkey = kp.getPrivate();
+            KeyFactory factory = KeyFactory.getInstance(pkey.getAlgorithm(), "AndroidKeyStore");
             KeyInfo keyInfo;
-            keyInfo = (KeyInfo) factory.getKeySpec(secretKey, KeyInfo.class);
+            keyInfo = (KeyInfo) factory.getKeySpec(pkey, KeyInfo.class);
             Log.d(TAG,"Calling isInsideSecureHardwareMethod");
             return keyInfo.isInsideSecureHardware();
         }catch(NoSuchAlgorithmException e){
@@ -431,6 +444,10 @@ public class FingerprintAuthAux {
         }catch(NoSuchProviderException e){
             errorMessage = createKeyExceptionErrorPrefix + "NoSuchProviderException";
             Log.d(TAG,errorMessage);
+            return false;
+        }catch(Exception e){
+            errorMessage = createKeyExceptionErrorPrefix + "NoSuchProviderException";
+            Log.d(TAG,e.getMessage());
             return false;
         }
     }
@@ -506,7 +523,6 @@ public class FingerprintAuthAux {
         String errorMessage = "";
         String getSecretKeyExceptionErrorPrefix = "Failed to get SecretKey from KeyStore: ";
         SecretKey key = null;
-        KeyInfo keyInfo;
         try {
             mKeyStore.load(null);
             key = (SecretKey) mKeyStore.getKey(CLIENT_ID, null);
