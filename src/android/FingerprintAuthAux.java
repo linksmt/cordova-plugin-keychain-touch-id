@@ -622,7 +622,7 @@ public class FingerprintAuthAux {
                     + e.getMessage();
             if(message == "Key user not authenticated"){
                 removePermanentlyInvalidatedKey();
-                errorMessage = "KeyPermanentlyInvalitadedException";
+                errorMessage = "KeyPermanentlyInvalidatedException";
             }
             Log.e(TAG, errorMessage);
         }
