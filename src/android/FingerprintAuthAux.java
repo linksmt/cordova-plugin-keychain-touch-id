@@ -325,9 +325,16 @@ public class FingerprintAuthAux {
             // HW Keystore Check - added hasSecureHardware check
             // this is needed when I create a new Key because
             // i need to create a new key to check the keyinfo.
+            final Boolean unsafeMode = false;
+            try{
+                unsafeMode = args.getBoolean(0);
+            }
+            catch(Exception e){
+                Log.d(TAG,'Parameter for Unsafe mode not read');
+            }
             if (isHardwareDetected()) {
                 if (hasEnrolledFingerprints()) {
-                    if (hasSecureHardware()) {
+                    if (hasSecureHardware() || unsafeMode) {
                         mPluginResult = new PluginResult(PluginResult.Status.OK);
                     }else{
                         String errorMessage =
