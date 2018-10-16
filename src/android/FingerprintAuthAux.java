@@ -330,7 +330,7 @@ public class FingerprintAuthAux {
                 unsafeMode = args.getBoolean(0);
             }
             catch(Exception e){
-                Log.d(TAG,'Parameter for Unsafe mode not read');
+                Log.d(TAG,"Parameter for Unsafe mode not read");
             }
             if (isHardwareDetected()) {
                 if (hasEnrolledFingerprints()) {
