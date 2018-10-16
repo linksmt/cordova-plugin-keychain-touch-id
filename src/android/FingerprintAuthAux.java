@@ -608,9 +608,22 @@ public class FingerprintAuthAux {
                     + e.getMessage();
             Log.e(TAG, errorMessage);
         } catch (IllegalBlockSizeException e) {
+            String message = e.getMessage();
+            String exception = e.getClass().getSimpleName();
+            if(message == null){
+                Throwable cause = e.getCause();
+                if(cause != null){
+                    message = cause.getMessage();
+                    exception = cause.getClass().getSimpleName();
+                }
+            }
             errorMessage = "Failed to encrypt the data with the generated key: "
-                    + "IllegalBlockSizeException: "
+                    + exception
                     + e.getMessage();
+            if(message == "Key user not authenticated"){
+                removePermanentlyInvalidatedKey();
+                errorMessage = "KeyPermanentlyInvalitadedException"
+            }
             Log.e(TAG, errorMessage);
         }
 
